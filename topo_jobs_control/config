@@ -1,0 +1,17 @@
+sleep 3; \
+echo \
+"text" \
+> \
+1.txt
+
+sleep 3; \
+echo \
+"text" \
+> \
+2.txt
+
+sleep 3; \
+echo \
+"text" \
+> \
+3.txt

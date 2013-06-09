@@ -1,0 +1,7 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+open my $in, "<", "input.txt" or die "Can't open input.txt: $!";
+my $line = <$in>;
+print $line;
