@@ -1,13 +1,22 @@
 #!/usr/bin/perl
 #	DESCRIPTION
+#		Topology contorl.
 #		Run multiple topologies at a specific time.
+#		Or run when new labels are found.
+#
 #	Input
-#		topos.txt
-#	MODIFIED		(MM/DD/YY) 
-#	Lancer Guo		05/13/13
-#	Version: 0.1
+#		config
+#
+#	MODIFIED			(MM/DD/YY) 
+#		Lancer Guo		 05/13/13
+#		Lancer Guo		 06/09/13
+#
+#	Version: 0.2
+#
 #	ChangeLog
-#		0.1	newly developed
+#		0.1	Newly developed. Run commands at specified time. Timezone supported.
+#		0.2	Add another mode. Run if new label found, with the new label.
+#			Use config files instead of input parameters. Removed check parameter subroutine.
 
 use strict;
 use warnings;
@@ -16,74 +25,75 @@ use File::Basename;
 use POSIX qw(tzset);
 use Time::Local;
 
-# check the input parameters.
-# params:
-# 	input file
-#	scheduled time(year month day hour minute)
-#	timezone(optional. default GMT+8).
-sub check_input_params {
-    my $argc = @ARGV;
-    if ($argc<6) {
-        print "! Missing one parameter <full path of the input file> <year> <month> <day> <hour> <min>.\n";
-        print " Usage: ./topo_jobs_control.pl topos.txt 2013 5 13 13 00\n";
-        print "! Exit.\n";
-    }
-}
-
 # symbols
 my $BACKSLASH = '\\';
+my $SHARP = '#';
 
 # variables definition
-my $input_file_name = $ARGV[0];
-my @input;
+my $LABEL_LOCAL_CACHE = "label_cache";
+my $SERIE = "IDM_MAIN_GENERIC";
+my $commands_file_name = 'commands';
+my $config_file_name = 'config';
+my @commands;
+my @configs;
 my @command_array;
-
-my $year = $ARGV[1];
-my $mon = $ARGV[2];
-my $day = $ARGV[3];
-my $hour = $ARGV[4];
-my $min = $ARGV[5];
-my $sec = 0;
-
-# set timezone
-if (defined($ARGV[6])){
-	$ENV{TZ} = $ARGV[6];
-	print "Set timezone to ".$ARGV[6]."\n";
-} else {
-	$ENV{TZ} = 'Asia/Shanghai';
-	print "No timezone selected. Using default GMT+8 Asia/Shanghai\n";
-}
-tzset();
-
-# convert scheduled time to epoch seconds
-my $due = timelocal($sec, $min, $hour, $day, $mon-1, $year);
+my %config;
 
 # wait to scheduled time
 sub wait_till_scheduled_time {
-	my $due = shift;
+	# set timezone
+	$ENV{TZ} = $config{"TIMEZONE"};
+	tzset();
+	# convert scheduled time to epoch seconds
+	my $due = timelocal($config{"SEC"}, $config{"MIN"}, $config{"HOUR"}, $config{"DAY"}, $config{"MONTH"}-1, $config{"YEAR"});
 	my $now = time;
-	if ($due<$now) {
+	if ($due < $now) {
 		print "scheduled time has already passed! exit.\n";
 		exit();
 	} else {
 		sleep $due-$now;
+		run_commands();
 	}
 }
 
+sub replace_label {
+    foreach my $cmd (@command_array){
+		my $new = get_local_label()." ";
+		$cmd=~ s/IDM_MAIN_GENERIC_[0-9,\.]*\s/$new/g;
+    }
+}
+
+sub periodically_check_label {
+    while(1){
+        if (new_label_generated()){
+            print "new label generated!\n";
+			replace_label();
+			#run_commands_test();
+			run_commands();
+            sleep $config{"PERIOD"};
+        } else {
+            print "no new label. wait for next check.\n";
+            sleep $config{"PERIOD"};
+        }
+    }
+}
+
 # read input
-sub read_input_file {
-	open my $in, "<", @_ or die "Can't open input.txt: $!";
-	@input = <$in>;
-    close $in or die "$in: $!";	
+sub read_file_to_array {
+	my $file = shift;
+    open my $in, "<", $file or die "Can't open file \"$file\": $!";
+    my @res = <$in>;
+    close $in or die "$in: $!";
+    return @res;
 }
 
 # generate commands to be ran from input file
 sub generate_commands {
 	my $cmd = '';
-    foreach my $line (@input) {
+    foreach my $line (@commands) {
         chomp $line;
 	
-		if (_is_empty($line)){
+		if (_is_ignorable($line)){
 			next;
 		}
 		
@@ -121,9 +131,13 @@ sub run_command_bg {
  	}
 }
 
-sub _is_empty {
+sub _is_ignorable {
 	my $line = shift;
+	# white line can be ignored.
 	if ($line eq "") {
+		return 1;
+	# comment line can be ignored too.
+	} elsif (substr($line, 0, 1) eq $SHARP){
 		return 1;
 	}
 	return 0;
@@ -142,15 +156,85 @@ sub _trim_backslash {
 	return substr($line, 0, -1);
 }
 
-sub main{
-    check_input_params();
-    read_input_file($input_file_name);
-    generate_commands();
-    wait_till_scheduled_time($due);
-    foreach my $cmd (@command_array){
+sub get_local_label {
+    my $last_label = "";
+    if (-e $LABEL_LOCAL_CACHE) {
+        open my $in, "<", $LABEL_LOCAL_CACHE or die "Can't open label_cache: $!";
+        $last_label = <$in>;
+        close $in;
+        if ($last_label eq ""){
+            $last_label = get_latest_label($SERIE);
+            update_label_local_catch($last_label);
+        }
+    } else {
+        $last_label = get_latest_label($SERIE);
+        update_label_local_catch($last_label);
+    }
+    return $last_label;
+}
+
+sub update_label_local_catch {
+    my $label = shift;
+    open my $OUT, ">", $LABEL_LOCAL_CACHE or die "Can't open label_cache: $!";
+    print $OUT $label;
+    close $OUT;
+}
+
+sub get_latest_label {
+    my @labels = `ade showlabels -series $SERIE`;
+    my $latest = $labels[-1];
+    chomp $latest;
+    return $latest;
+}
+
+sub new_label_generated {
+    my $last_label = get_local_label();
+    my $latest_label = get_latest_label();
+    if ($last_label eq $latest_label){
+        return 0;
+    } else {
+        update_label_local_catch($latest_label);
+        return 1;
+    }
+}
+
+sub load_config {
+    my $cmd = '';
+    foreach my $line (@configs) {
+        chomp $line;
+        if (_is_ignorable($line)){
+            next;
+        }
+		my @kv = split('=', $line);
+		my $key = $kv[0];
+		my $val = $kv[1];
+    	$config{$key} = $val; 
+    }	
+}
+
+sub run_commands {
+	foreach my $cmd (@command_array){
 		run_command_bg($cmd);
+    }
+}
+
+sub run_commands_test {
+	foreach my $cmd (@command_array){
+		print $cmd."\n";
+    }
+}
+
+sub main {
+    @commands = read_file_to_array($commands_file_name);
+    @configs = read_file_to_array($config_file_name);
+    generate_commands();
+    load_config();
+
+	if ($config{"MODE"} == 1){
+		periodically_check_label();	
+	} elsif ($config{"MODE"} == 2) {
+    	wait_till_scheduled_time();
 	}
-	print "success!\n";
 }
 
 main();

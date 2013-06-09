@@ -1,17 +1,19 @@
-sleep 3; \
-echo \
-"text" \
-> \
-1.txt
+# Use sharp symbol "#" for comments. AS in this line.
+# White lines are ignored.
 
-sleep 3; \
-echo \
-"text" \
-> \
-2.txt
-
-sleep 3; \
-echo \
-"text" \
-> \
-3.txt
+# MODE=1: run when new label is generated.
+# MODE=2: run at specified time. At this mode you must specify YEAR, MONTH, DAY, HOUR, MINUTE, SEC and TIMEZONE.
+MODE=1
+# For MODE=1, period to check the label. In seconds.
+PERIOD=60
+# ade label series
+SERIE=IDM_MAIN_GENERIC
+# By default, TIMEZONE is Asia/Shanghai GMT+8
+TIMEZONE=Asia/Shanghai
+# For MODE=2, time to run.
+YEAR=2013
+MONTH=6
+DAY=9
+HOUR=14
+MIN=47
+SEC=0
