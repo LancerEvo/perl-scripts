@@ -225,6 +225,8 @@ sub run_commands_test {
 }
 
 sub main {
+	open STDOUT, ">", "output.txt" or die "$0: open: $!";
+	open STDERR, ">&STDOUT"        or die "$0: dup: $!";
     @commands = read_file_to_array($commands_file_name);
     @configs = read_file_to_array($config_file_name);
     generate_commands();

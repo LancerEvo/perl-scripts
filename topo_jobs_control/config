@@ -5,7 +5,7 @@
 # MODE=2: run at specified time. At this mode you must specify YEAR, MONTH, DAY, HOUR, MINUTE, SEC and TIMEZONE.
 MODE=1
 # For MODE=1, period to check the label. In seconds.
-PERIOD=60
+PERIOD=300
 # ade label series
 SERIE=IDM_MAIN_GENERIC
 # By default, TIMEZONE is Asia/Shanghai GMT+8
