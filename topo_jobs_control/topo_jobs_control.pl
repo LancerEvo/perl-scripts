@@ -231,7 +231,9 @@ sub run_commands_test {
 sub print_log{
 	my $msg = shift;
 	my $now = localtime();
-	print "==".$now."==".$msg."\n";
+	print "================".$now."================\n\n";
+	print $msg."\n\n";
+	print "================================================\n\n";
 }
 
 sub main {
