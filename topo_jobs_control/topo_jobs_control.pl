@@ -25,6 +25,10 @@ use File::Basename;
 use POSIX qw(tzset);
 use Time::Local;
 
+BEGIN {
+	select(STDOUT);
+	$| = 1;
+}
 # symbols
 my $BACKSLASH = '\\';
 my $SHARP = '#';
@@ -48,7 +52,7 @@ sub wait_till_scheduled_time {
 	my $due = timelocal($config{"SEC"}, $config{"MIN"}, $config{"HOUR"}, $config{"DAY"}, $config{"MONTH"}-1, $config{"YEAR"});
 	my $now = time;
 	if ($due < $now) {
-		print "scheduled time has already passed! exit.\n";
+		print_log("scheduled time has already passed! exit.");
 		exit();
 	} else {
 		sleep $due-$now;
@@ -66,13 +70,12 @@ sub replace_label {
 sub periodically_check_label {
     while(1){
         if (new_label_generated()){
-            print "new label generated!\n";
+            print_log("new label generated!");
 			replace_label();
 			#run_commands_test();
 			run_commands();
             sleep $config{"PERIOD"};
         } else {
-            print "no new label. wait for next check.\n";
             sleep $config{"PERIOD"};
         }
     }
@@ -214,6 +217,7 @@ sub load_config {
 
 sub run_commands {
 	foreach my $cmd (@command_array){
+		print_log($cmd);
 		run_command_bg($cmd);
     }
 }
@@ -222,6 +226,12 @@ sub run_commands_test {
 	foreach my $cmd (@command_array){
 		print $cmd."\n";
     }
+}
+
+sub print_log{
+	my $msg = shift;
+	my $now = localtime();
+	print "==".$now."==".$msg."\n";
 }
 
 sub main {
