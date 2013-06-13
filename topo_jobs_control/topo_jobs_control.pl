@@ -25,10 +25,11 @@ use File::Basename;
 use POSIX qw(tzset);
 use Time::Local;
 
-BEGIN {
-	select(STDOUT);
-	$| = 1;
-}
+#BEGIN {
+#	select(STDOUT);
+#	$| = 1;
+#}
+
 # symbols
 my $BACKSLASH = '\\';
 my $SHARP = '#';
@@ -42,6 +43,8 @@ my @commands;
 my @configs;
 my @command_array;
 my %config;
+my $farm_output="farm_output.txt";
+my $logfile="log.txt";
 
 # wait to scheduled time
 sub wait_till_scheduled_time {
@@ -116,12 +119,18 @@ sub generate_commands {
 }
 
 sub run_command_bg {
-	my ($command, $child_pid);
+	my ($command, $child_pid, $log);
 
-	if ( scalar(@_) == 1 ) {
+	if ( $#_ == 1  || $#_ == 0 ){
 		$command = $_[0];
+		$log = $_[1] if $#_ == 1 ;
 		$child_pid = fork();
 		if ( $child_pid == 0 ) {
+     		if ( $#_ == 1 )
+     		{
+     		   open (STDOUT, ">>$log") || warn ("run_command_bg: Could not open $log for stdout.\n");
+     		   open (STDERR, ">&STDOUT")   || warn ("run_command_bg: Can't dup stdout");
+     		}
 			exec ($command) || warn ("run_command: Could not exec $command.\n");
 			# shall never execute the following statement, but if $command
 			# does not exist, exec() will come to this point!!!
@@ -218,7 +227,7 @@ sub load_config {
 sub run_commands {
 	foreach my $cmd (@command_array){
 		print_log($cmd);
-		run_command_bg($cmd);
+		run_command_bg($cmd, $farm_output);
     }
 }
 
@@ -231,14 +240,14 @@ sub run_commands_test {
 sub print_log{
 	my $msg = shift;
 	my $now = localtime();
-	print "================".$now."================\n\n";
-	print $msg."\n\n";
-	print "================================================\n\n";
+	open my $OUT, ">>", $logfile or die "Can't open label_cache: $!";
+	print $OUT "================".$now."================\n\n";
+	print $OUT $msg."\n\n";
+	print $OUT "================================================\n\n";
+    close $OUT;
 }
 
 sub main {
-	open STDOUT, ">", "output.txt" or die "$0: open: $!";
-	open STDERR, ">&STDOUT"        or die "$0: dup: $!";
     @commands = read_file_to_array($commands_file_name);
     @configs = read_file_to_array($config_file_name);
     generate_commands();
