@@ -17,6 +17,9 @@
 #		0.1	Newly developed. Run commands at specified time. Timezone supported.
 #		0.2	Add another mode. Run if new label found, with the new label.
 #			Use config files instead of input parameters. Removed check parameter subroutine.
+#		0.3 Set timezone at the beginning so that the time in logs is correct.
+#			Automatically reload commands if chaged.
+#			Move some params to config files.
 
 use strict;
 use warnings;
@@ -24,33 +27,28 @@ use File::Copy;
 use File::Basename;
 use POSIX qw(tzset);
 use Time::Local;
-
-#BEGIN {
-#	select(STDOUT);
-#	$| = 1;
-#}
+use threads;
+use threads::shared;
 
 # symbols
 my $BACKSLASH = '\\';
 my $SHARP = '#';
 
 # variables definition
-my $LABEL_LOCAL_CACHE = "label_cache";
-my $SERIE = "IDM_MAIN_GENERIC";
-my $commands_file_name = 'commands';
-my $config_file_name = 'config';
+my $CONFIG_FILE_NAME='config';
 my @commands;
 my @configs;
-my @command_array;
+my @command_array :shared;
 my %config;
-my $farm_output="farm_output.txt";
-my $logfile="log.txt";
+my $commands_last_modified_time=0;
+
+sub set_timezone {
+	$ENV{TZ} = $config{"TIMEZONE"};
+	tzset();
+}
 
 # wait to scheduled time
 sub wait_till_scheduled_time {
-	# set timezone
-	$ENV{TZ} = $config{"TIMEZONE"};
-	tzset();
 	# convert scheduled time to epoch seconds
 	my $due = timelocal($config{"SEC"}, $config{"MIN"}, $config{"HOUR"}, $config{"DAY"}, $config{"MONTH"}-1, $config{"YEAR"});
 	my $now = time;
@@ -77,9 +75,9 @@ sub periodically_check_label {
 			replace_label();
 			#run_commands_test();
 			run_commands();
-            sleep $config{"PERIOD"};
+            sleep $config{"CHECK_NEW_LABEL_PERIOD"};
         } else {
-            sleep $config{"PERIOD"};
+            sleep $config{"CHECK_NEW_LABEL_PERIOD"};
         }
     }
 }
@@ -143,6 +141,54 @@ sub run_command_bg {
  	}
 }
 
+sub get_file_modified_time {
+    my $file = shift;
+    return (stat($file))[9];
+}
+
+sub file_modified {
+    my $file = shift;
+    if ($commands_last_modified_time == 0){
+        $commands_last_modified_time  = get_file_modified_time($file);
+        return 0;
+    } else {
+        my $t = get_file_modified_time($file);
+        if($t!=$commands_last_modified_time){
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+}
+
+sub auto_reload_commands {
+    my $log = $_[0];
+    my $child_pid = fork();
+    if ( $child_pid == 0 ) {
+        open (STDOUT, ">>$log") || warn ("auto_reload_commands: Could not open $log for stdout.\n");
+        open (STDERR, ">&STDOUT")   || warn ("auto_reload_commands: Can't dup stdout");
+        while(1){
+            if(file_modified($config{'COMMANDS_FILE_NAME'})){
+                {
+                    lock(@command_array);
+                    @commands = read_file_to_array($config{'COMMANDS_FILE_NAME'});
+                    @command_array = ();
+                    generate_commands();
+                }
+				my $now = localtime();
+                print "== $now == commands have been reloaded automatically.\n";
+                $commands_last_modified_time  = get_file_modified_time($config{'COMMANDS_FILE_NAME'});
+            }
+            sleep $config{'AUTO_RELOAD_COMMANDS_INTERVAL'};
+        }
+        # shall never execute the following statement, but if $command
+        # does not exist, exec() will come to this point!!!
+        exit 1;
+    } else {
+        return $child_pid;
+    }
+}
+
 sub _is_ignorable {
 	my $line = shift;
 	# white line can be ignored.
@@ -170,16 +216,16 @@ sub _trim_backslash {
 
 sub get_local_label {
     my $last_label = "";
-    if (-e $LABEL_LOCAL_CACHE) {
-        open my $in, "<", $LABEL_LOCAL_CACHE or die "Can't open label_cache: $!";
+    if (-e $config{'LABEL_LOCAL_CACHE'}) {
+        open my $in, "<", $config{'LABEL_LOCAL_CACHE'} or die "Can't open label_cache: $!";
         $last_label = <$in>;
         close $in;
         if ($last_label eq ""){
-            $last_label = get_latest_label($SERIE);
+            $last_label = get_latest_label($config{'SERIE'});
             update_label_local_catch($last_label);
         }
     } else {
-        $last_label = get_latest_label($SERIE);
+        $last_label = get_latest_label($config{'SERIE'});
         update_label_local_catch($last_label);
     }
     return $last_label;
@@ -187,13 +233,13 @@ sub get_local_label {
 
 sub update_label_local_catch {
     my $label = shift;
-    open my $OUT, ">", $LABEL_LOCAL_CACHE or die "Can't open label_cache: $!";
+    open my $OUT, ">", $config{'LABEL_LOCAL_CACHE'} or die "Can't open label_cache: $!";
     print $OUT $label;
     close $OUT;
 }
 
 sub get_latest_label {
-    my @labels = `ade showlabels -series $SERIE`;
+    my @labels = `ade showlabels -series $config{'SERIE'}`;
     my $latest = $labels[-1];
     chomp $latest;
     return $latest;
@@ -227,20 +273,20 @@ sub load_config {
 sub run_commands {
 	foreach my $cmd (@command_array){
 		print_log($cmd);
-		run_command_bg($cmd, $farm_output);
+		run_command_bg($cmd, $config{'FARM_OUTPUT'});
     }
 }
 
 sub run_commands_test {
 	foreach my $cmd (@command_array){
-		print $cmd."\n";
+		print_log($cmd);
     }
 }
 
 sub print_log{
 	my $msg = shift;
 	my $now = localtime();
-	open my $OUT, ">>", $logfile or die "Can't open label_cache: $!";
+	open my $OUT, ">>", $config{'MAIN_LOG'} or die "Can't open label_cache: $!";
 	print $OUT "================".$now."================\n\n";
 	print $OUT $msg."\n\n";
 	print $OUT "================================================\n\n";
@@ -248,10 +294,12 @@ sub print_log{
 }
 
 sub main {
-    @commands = read_file_to_array($commands_file_name);
-    @configs = read_file_to_array($config_file_name);
-    generate_commands();
+    @configs = read_file_to_array($CONFIG_FILE_NAME);
     load_config();
+	set_timezone();
+    @commands = read_file_to_array($config{'COMMANDS_FILE_NAME'});
+    generate_commands();
+	auto_reload_commands($config{'AUTO_RELOAD_COMMANDS_LOG'});
 
 	if ($config{"MODE"} == 1){
 		periodically_check_label();	

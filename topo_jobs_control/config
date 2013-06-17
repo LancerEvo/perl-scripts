@@ -4,12 +4,33 @@
 # MODE=1: run when new label is generated.
 # MODE=2: run at specified time. At this mode you must specify YEAR, MONTH, DAY, HOUR, MINUTE, SEC and TIMEZONE.
 MODE=1
-# For MODE=1, period to check the label. In seconds.
-PERIOD=300
-# ade label series
+
+# If MODE=1, you need to specify which label serie to check.
 SERIE=IDM_MAIN_GENERIC
+# For MODE=1, period to check the label. In seconds.
+CHECK_NEW_LABEL_PERIOD=300
+
+# Local label catch file name.
+LABEL_LOCAL_CACHE=label_cache
+
+# Commands file name.
+COMMANDS_FILE_NAME=commands
+
+# Farm output log file name.
+FARM_OUTPUT=farm.log
+
+# Main log file name.
+MAIN_LOG=log
+
+# Auto reload commands log file name.
+AUTO_RELOAD_COMMANDS_LOG=auto_reload_commands.log
+
+# Auto reload commands interval.
+AUTO_RELOAD_COMMANDS_INTERVAL=300
+
 # By default, TIMEZONE is Asia/Shanghai GMT+8
 TIMEZONE=Asia/Shanghai
+
 # For MODE=2, time to run.
 YEAR=2013
 MONTH=6
