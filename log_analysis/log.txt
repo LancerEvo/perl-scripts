@@ -1,0 +1,12 @@
+begin
+this is a log file
+SEVERE: alsdkjfladsjfk
+this is a log file
+Error: asdfasdf
+this is a log file
+this is a log fil
+config user failed
+this is a log file
+this is a log file
+this is a log file
+end
