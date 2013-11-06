@@ -10,7 +10,6 @@
 #	MODIFIED			(MM/DD/YY) 
 #		Lancer Guo		 05/13/13
 #		Lancer Guo		 06/09/13
-#		Lancer Guo		 06/17/13
 #
 #	Version: 0.2
 #
